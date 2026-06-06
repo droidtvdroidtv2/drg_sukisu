@@ -1,19 +1,19 @@
-name: Build ReSukiSU Kernel (Nokia DRG)
+name: Build ReSukiSU Kernel (Nokia DRG - Fork Source)
 
 on:
   workflow_dispatch:
 
 env:
+  # ใช้ Kernel Source จากคลังที่คุณ Fork มา
   KERNEL_SOURCE: "https://github.com/droidtvdroidtv2/android_kernel_nokia_sdm660"
   KERNEL_BRANCH: "lineage-22.2"
   DEFCONFIG: "sdm660_defconfig"
   ARCH: "arm64"
-  # ใช้ Proton-Clang เพื่อการคอมไพล์ที่เสถียรสำหรับ Kernel รุ่นเก่าและรองรับ ReSukiSU
   CLANG_URL: "https://github.com/kdrag0n/proton-clang"
 
 jobs:
   build:
-    name: Build Kernel for DRG
+    name: Build Kernel
     runs-on: ubuntu-22.04
 
     steps:
@@ -29,33 +29,32 @@ jobs:
         run: |
           git clone --depth=1 ${{ env.CLANG_URL }} ~/clang
 
-      - name: Clone Kernel Source
+      - name: Clone Kernel Source From Fork
         run: |
           git clone --depth=1 -b ${{ env.KERNEL_BRANCH }} ${{ env.KERNEL_SOURCE }} kernel-source
 
-      - name: Setup ReSukiSU (อิงจากลิงก์ในรูปภาพ)
+      - name: Inject ReSukiSU Source
         run: |
           cd kernel-source
-          
-          # ใช้คำสั่งติดตั้งจาก Official ReSukiSU
+          # ดึงสคริปต์ติดตั้ง ReSukiSU มาฝังในโครงสร้าง Kernel
           curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash
           
-          # บังคับแทรก Config เปิดการทำงาน Kprobes สำหรับระบบ Non-GKI
+          # บังคับเพิ่ม Config ของระบบควบคุมสิทธิ์และตรวจสอบความถูกต้องสำหรับ Non-GKI
           echo "CONFIG_KPROBES=y" >> arch/arm64/configs/${{ env.DEFCONFIG }}
           echo "CONFIG_HAVE_KPROBES=y" >> arch/arm64/configs/${{ env.DEFCONFIG }}
           echo "CONFIG_KPROBE_EVENTS=y" >> arch/arm64/configs/${{ env.DEFCONFIG }}
           echo "CONFIG_KALLSYMS=y" >> arch/arm64/configs/${{ env.DEFCONFIG }}
           echo "CONFIG_KALLSYMS_ALL=y" >> arch/arm64/configs/${{ env.DEFCONFIG }}
 
-      - name: Build Kernel
+      - name: Compile Kernel
         run: |
           cd kernel-source
           export PATH="$HOME/clang/bin:$PATH"
           
-          # สร้างไฟล์ Config
+          # เริ่มต้นด้วยไฟล์ Config ที่กำหนดไว้
           make O=out ARCH=${{ env.ARCH }} ${{ env.DEFCONFIG }}
           
-          # เริ่มคอมไพล์ด้วย Clang
+          # สั่งบิลด์ด้วย Clang
           make -j$(nproc --all) O=out ARCH=${{ env.ARCH }} \
             CC=clang \
             CROSS_COMPILE=aarch64-linux-gnu- \
@@ -71,19 +70,17 @@ jobs:
         run: |
           git clone --depth=1 https://github.com/osm0sis/AnyKernel3 AnyKernel3
           
-          # แก้ไข Config ของ AnyKernel ให้ตรงกับ Nokia DRG
+          # ระบุข้อมูลอุปกรณ์เป็นของ Nokia DRG
           sed -i 's/device.name1=maguro/device.name1=drg/' AnyKernel3/anykernel.sh
           sed -i 's/device.name2=toro/device.name2=Nokia 6.1 Plus/' AnyKernel3/anykernel.sh
-          sed -i 's/device.name3=tuna/device.name3=SDM660/' AnyKernel3/anykernel.sh
           
-          # ค้นหาไฟล์ Image (รองรับทั้ง Image.gz-dtb และ Image ธรรมดา) ไปใส่ใน AnyKernel3
+          # ค้นหาไฟล์ตระกูล Image เพื่อนำไปจัดชุดแฟลช
           find kernel-source/out/arch/arm64/boot -name "Image.gz-dtb" -exec cp {} AnyKernel3/ \; || find kernel-source/out/arch/arm64/boot -name "Image*" -exec cp {} AnyKernel3/ \;
           
-          # สร้างไฟล์ Zip
           cd AnyKernel3
           zip -r9 ../ReSukiSU-Nokia-DRG-Kernel.zip * -x .git README.md *placeholder
 
-      - name: Upload Artifact
+      - name: Upload Finished Zip
         uses: actions/upload-artifact@v4
         with:
           name: ReSukiSU-Nokia-DRG-Kernel

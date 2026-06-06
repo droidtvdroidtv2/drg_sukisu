@@ -1,4 +1,4 @@
-name: Build Kernel SukiSU-Ultra + KPM
+name: Build Kernel SukiSU-Ultra
 
 on:
   workflow_dispatch:
@@ -37,16 +37,17 @@ jobs:
         echo "CONFIG_HAVE_KPROBES=y" >> arch/arm64/configs/${{ github.event.inputs.KERNEL_DEFCONFIG }}
         echo "CONFIG_KPROBE_EVENTS=y" >> arch/arm64/configs/${{ github.event.inputs.KERNEL_DEFCONFIG }}
         echo "CONFIG_OVERLAY_FS=y" >> arch/arm64/configs/${{ github.event.inputs.KERNEL_DEFCONFIG }}
-        echo "CONFIG_MODULES=y" >> arch/arm64/configs/${{ github.event.inputs.KERNEL_DEFCONFIG }}
-        echo "CONFIG_MODULE_UNLOAD=y" >> arch/arm64/configs/${{ github.event.inputs.KERNEL_DEFCONFIG }}
-        echo "CONFIG_KALLSYMS=y" >> arch/arm64/configs/${{ github.event.inputs.KERNEL_DEFCONFIG }}
-        echo "CONFIG_KALLSYMS_ALL=y" >> arch/arm64/configs/${{ github.event.inputs.KERNEL_DEFCONFIG }}
-        echo "CONFIG_MODULE_SIG=n" >> arch/arm64/configs/${{ github.event.inputs.KERNEL_DEFCONFIG }}
 
     - name: Setup SukiSU-Ultra
       run: |
         cd kernel-source
         curl -LSs "https://raw.githubusercontent.com/sukisu-ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -
+
+    - name: Patch KernelSU for Legacy Kernel
+      run: |
+        cd kernel-source
+        sed -i '1s/^/#ifndef MODULE_IMPORT_NS\n#define MODULE_IMPORT_NS(ns)\n#endif\n/' drivers/kernelsu/core/init.c
+        sed -i '1s/^/struct pt_regs;\ntypedef long (*syscall_fn_t)(const struct pt_regs *);\n/' drivers/kernelsu/hook/syscall_hook.h
 
     - name: Compile Kernel
       run: |

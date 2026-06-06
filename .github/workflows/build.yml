@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       DEFCONFIG:
-        description: "ชื่อ defconfig (ดูใน arch/arm64/configs/)"
+        description: "nokia_defconfig"
         required: true
         default: "sdm660-perf_defconfig"
       ANYKERNEL_REPO:

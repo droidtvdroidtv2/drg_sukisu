@@ -47,14 +47,30 @@ jobs:
             binutils-aarch64-linux-gnu
 
       # ── 3. SukiSU-Ultra ────────────────────────────────────────────────
-      # setup.sh จะ clone KernelSU driver + patch Makefile ให้อัตโนมัติ
-      - name: ⚡ Apply SukiSU-Ultra
+      # clone โดยตรงแทน setup.sh เพื่อหลีกเลี่ยงปัญหา non-GKI path detection
+      - name: ⚡ Apply SukiSU-Ultra (Non-GKI)
         run: |
-          curl -LSs \
-            "https://raw.githubusercontent.com/ShirkNeko/SukiSU-Ultra/main/kernel/setup.sh" \
-            | bash -s main
+          echo "==> Cloning SukiSU-Ultra..."
+          git clone --depth=1 \
+            https://github.com/ShirkNeko/SukiSU-Ultra \
+            KernelSU
           echo "[INFO] KernelSU version: $(cat KernelSU/VERSION 2>/dev/null || echo 'N/A')"
-          ls KernelSU/ || { echo "[ERROR] KernelSU dir missing"; exit 1; }
+          ls KernelSU/kernel/ || { echo "[ERROR] KernelSU/kernel/ missing"; exit 1; }
+
+          echo "==> Integrating into kernel build..."
+          if [ -d "drivers" ]; then
+            echo "  [+] Method: drivers/ symlink"
+            ln -sf ../../KernelSU/kernel drivers/kernelsu
+            echo ""                                     >> drivers/Makefile
+            echo "obj-\$(CONFIG_KSU) += kernelsu/"     >> drivers/Makefile
+            echo ""                                     >> drivers/Kconfig
+            echo "source \"drivers/kernelsu/Kconfig\"" >> drivers/Kconfig
+          else
+            echo "  [+] Method: root Makefile"
+            echo ""                                          >> Makefile
+            echo "obj-\$(CONFIG_KSU) += KernelSU/kernel/"  >> Makefile
+          fi
+          echo "[OK] SukiSU-Ultra integration complete"
 
       # ── 4. Configure kernel ────────────────────────────────────────────
       # - เปิด CONFIG_KSU

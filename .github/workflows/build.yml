@@ -1,45 +1,46 @@
-name: Build SukiSU-Ultra for Nokia DRG (Non-GKI)
+name: Build ReSukiSU Kernel (Nokia DRG)
 
 on:
   workflow_dispatch:
 
+env:
+  KERNEL_SOURCE: "https://github.com/droidtvdroidtv2/android_kernel_nokia_sdm660"
+  KERNEL_BRANCH: "lineage-22.2"
+  DEFCONFIG: "sdm660_defconfig"
+  ARCH: "arm64"
+  # ใช้ Proton-Clang เพื่อการคอมไพล์ที่เสถียรสำหรับ Kernel รุ่นเก่าและรองรับ ReSukiSU
+  CLANG_URL: "https://github.com/kdrag0n/proton-clang"
+
 jobs:
   build:
-    name: Build Kernel
+    name: Build Kernel for DRG
     runs-on: ubuntu-22.04
-
-    env:
-      KERNEL_SOURCE: "https://github.com/LineageOS/android_kernel_nokia_sdm660"
-      KERNEL_BRANCH: "lineage-22.1"
-      # หาก DRG ใช้ defconfig ชื่ออื่น (เช่น lineage_drg_defconfig) ให้เปลี่ยนตรงนี้
-      DEFCONFIG: "sdm660_defconfig" 
-      ARCH: "arm64"
-      ANYKERNEL_REPO: "https://github.com/osm0sis/AnyKernel3"
 
     steps:
       - name: Checkout Workspace
         uses: actions/checkout@v4
 
-      - name: Setup Build Environment
+      - name: Install Dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y git ccache automake flex lzop bison gperf build-essential zip curl zlib1g-dev g++-multilib libxml2-utils bzip2 libbz2-dev libbz2-1.0 libghc-bzlib-dev squashfs-tools pngcrush schedtool dpkg-dev liblz4-tool make optipng maven libssl-dev pwgen libswitch-perl policycoreutils minicom libxml-sax-base-perl libxml-simple-perl bc libc6-dev-i386 lib32ncurses5-dev x11proto-core-dev libx11-dev lib32z-dev libgl1-mesa-dev xsltproc unzip device-tree-compiler python3
 
-      - name: Download Proton-Clang Toolchain
+      - name: Download Toolchain (Proton-Clang)
         run: |
-          git clone https://github.com/kdrag0n/proton-clang --depth=1 ~/proton-clang
+          git clone --depth=1 ${{ env.CLANG_URL }} ~/clang
 
       - name: Clone Kernel Source
         run: |
           git clone --depth=1 -b ${{ env.KERNEL_BRANCH }} ${{ env.KERNEL_SOURCE }} kernel-source
 
-      - name: Setup SukiSU-Ultra
+      - name: Setup ReSukiSU (อิงจากลิงก์ในรูปภาพ)
         run: |
           cd kernel-source
-          # ดึงสคริปต์ของ SukiSU-Ultra มาติดตั้งลงใน Kernel Source
-          curl -LSs "https://raw.githubusercontent.com/sukisu-ultra/sukisu-ultra/main/kernel/setup.sh" | bash -
           
-          # แทรก Config ที่บังคับใช้สำหรับ SukiSU Non-GKI
+          # ใช้คำสั่งติดตั้งจาก Official ReSukiSU
+          curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash
+          
+          # บังคับแทรก Config เปิดการทำงาน Kprobes สำหรับระบบ Non-GKI
           echo "CONFIG_KPROBES=y" >> arch/arm64/configs/${{ env.DEFCONFIG }}
           echo "CONFIG_HAVE_KPROBES=y" >> arch/arm64/configs/${{ env.DEFCONFIG }}
           echo "CONFIG_KPROBE_EVENTS=y" >> arch/arm64/configs/${{ env.DEFCONFIG }}
@@ -49,15 +50,13 @@ jobs:
       - name: Build Kernel
         run: |
           cd kernel-source
-          export PATH="$HOME/proton-clang/bin:$PATH"
-          export STRIP="$HOME/proton-clang/aarch64-linux-gnu/bin/strip"
+          export PATH="$HOME/clang/bin:$PATH"
           
+          # สร้างไฟล์ Config
           make O=out ARCH=${{ env.ARCH }} ${{ env.DEFCONFIG }}
           
-          # ใช้ Clang 컴ไพล์ เนื่องจาก Kernel เก่าอาจมีปัญหากับ LLVM_IAS
-          make -j$(nproc --all) \
-            O=out \
-            ARCH=${{ env.ARCH }} \
+          # เริ่มคอมไพล์ด้วย Clang
+          make -j$(nproc --all) O=out ARCH=${{ env.ARCH }} \
             CC=clang \
             CROSS_COMPILE=aarch64-linux-gnu- \
             CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
@@ -65,24 +64,27 @@ jobs:
             NM=llvm-nm \
             OBJCOPY=llvm-objcopy \
             OBJDUMP=llvm-objdump \
-            STRIP=llvm-strip
+            STRIP=llvm-strip \
+            LD=ld.lld
 
       - name: Package with AnyKernel3
         run: |
-          git clone --depth=1 ${{ env.ANYKERNEL_REPO }} AnyKernel3
+          git clone --depth=1 https://github.com/osm0sis/AnyKernel3 AnyKernel3
           
-          # ปรับแก้ AnyKernel ให้รองรับชื่อโค้ดเนม drg
-          sed -i 's/device.name1=maguro/device.name1=drg/g' AnyKernel3/anykernel.sh
-          sed -i 's/device.name2=toro/device.name2=Nokia 6.1 Plus/g' AnyKernel3/anykernel.sh
+          # แก้ไข Config ของ AnyKernel ให้ตรงกับ Nokia DRG
+          sed -i 's/device.name1=maguro/device.name1=drg/' AnyKernel3/anykernel.sh
+          sed -i 's/device.name2=toro/device.name2=Nokia 6.1 Plus/' AnyKernel3/anykernel.sh
+          sed -i 's/device.name3=tuna/device.name3=SDM660/' AnyKernel3/anykernel.sh
           
-          # ค้นหาและก๊อปปี้ไฟล์ Image มาแพ็กเข้า ZIP
-          find kernel-source/out/arch/arm64/boot -name "Image*" -exec cp {} AnyKernel3/ \;
+          # ค้นหาไฟล์ Image (รองรับทั้ง Image.gz-dtb และ Image ธรรมดา) ไปใส่ใน AnyKernel3
+          find kernel-source/out/arch/arm64/boot -name "Image.gz-dtb" -exec cp {} AnyKernel3/ \; || find kernel-source/out/arch/arm64/boot -name "Image*" -exec cp {} AnyKernel3/ \;
           
+          # สร้างไฟล์ Zip
           cd AnyKernel3
-          zip -r9 ../SukiSU-Ultra-drg-kernel.zip * -x .git README.md *placeholder
+          zip -r9 ../ReSukiSU-Nokia-DRG-Kernel.zip * -x .git README.md *placeholder
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: SukiSU-Ultra-Nokia-DRG-Kernel
-          path: SukiSU-Ultra-drg-kernel.zip
+          name: ReSukiSU-Nokia-DRG-Kernel
+          path: ReSukiSU-Nokia-DRG-Kernel.zip

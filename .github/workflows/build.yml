@@ -1,87 +1,130 @@
-name: Build Kernel SukiSU-Ultra
+name: 🔨 Build Kernel — Nokia SDM660 + SukiSU-Ultra
 
 on:
   workflow_dispatch:
     inputs:
-      KERNEL_DEFCONFIG:
-        description: 'Kernel Defconfig'
+      DEFCONFIG:
+        description: "ชื่อ defconfig (ดูใน arch/arm64/configs/)"
         required: true
-        default: 'sdm660_defconfig'
+        default: "sdm660-perf_defconfig"
+      ANYKERNEL_REPO:
+        description: "URL ของ AnyKernel3 repo"
+        required: true
+        default: "https://github.com/osm0sis/AnyKernel3"
+      ANYKERNEL_BRANCH:
+        description: "Branch ของ AnyKernel3"
+        required: true
+        default: "master"
+
+env:
+  ARCH: arm64
+  SUBARCH: arm64
 
 jobs:
   build:
-    name: Build Kernel
+    name: 🔨 Build Kernel
     runs-on: ubuntu-22.04
 
     steps:
-    - name: Checkout Code
-      uses: actions/checkout@v4
 
-    - name: Setup Build Environment
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y build-essential bc curl git zip unzip libssl-dev libfl-dev gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi
+      # ── 1. Checkout ────────────────────────────────────────────────────
+      - name: 📥 Checkout kernel source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
 
-    - name: Clone Compiler
-      run: |
-        git clone --depth=1 https://github.com/kdrag0n/proton-clang.git clang
+      # ── 2. Install tools ───────────────────────────────────────────────
+      - name: 🔧 Install dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y \
+            git curl wget python3 make \
+            flex bison libssl-dev libelf-dev \
+            bc zip unzip lz4 \
+            gcc-aarch64-linux-gnu \
+            gcc-arm-linux-gnueabi \
+            clang lld llvm \
+            binutils-aarch64-linux-gnu
 
-    - name: Clone Kernel Source
-      run: |
-        git clone --depth=1 -b lineage-22.1 https://github.com/LineageOS/android_kernel_nokia_sdm660.git kernel-source
+      # ── 3. SukiSU-Ultra ────────────────────────────────────────────────
+      # setup.sh จะ clone KernelSU driver + patch Makefile ให้อัตโนมัติ
+      - name: ⚡ Apply SukiSU-Ultra
+        run: |
+          curl -LSs \
+            "https://raw.githubusercontent.com/ShirkNeko/SukiSU-Ultra/main/kernel/setup.sh" \
+            | bash -s main
+          echo "[INFO] KernelSU version: $(cat KernelSU/VERSION 2>/dev/null || echo 'N/A')"
+          ls KernelSU/ || { echo "[ERROR] KernelSU dir missing"; exit 1; }
 
-    - name: Inject Kernel Configurations
-      run: |
-        cd kernel-source
-        echo "CONFIG_KPROBES=y" >> arch/arm64/configs/${{ github.event.inputs.KERNEL_DEFCONFIG }}
-        echo "CONFIG_HAVE_KPROBES=y" >> arch/arm64/configs/${{ github.event.inputs.KERNEL_DEFCONFIG }}
-        echo "CONFIG_KPROBE_EVENTS=y" >> arch/arm64/configs/${{ github.event.inputs.KERNEL_DEFCONFIG }}
-        echo "CONFIG_OVERLAY_FS=y" >> arch/arm64/configs/${{ github.event.inputs.KERNEL_DEFCONFIG }}
+      # ── 4. Configure kernel ────────────────────────────────────────────
+      # - เปิด CONFIG_KSU
+      # - ปิด CONFIG_KSU_WITH_KPROBES เพราะเป็น non-GKI (4.14)
+      #   ใช้ manual hook แทน ซึ่ง setup.sh จัดการให้แล้ว
+      - name: ⚙️ Configure kernel
+        run: |
+          make O=out ARCH=$ARCH ${{ inputs.DEFCONFIG }}
 
-    - name: Setup SukiSU-Ultra
-      run: |
-        cd kernel-source
-        curl -LSs "https://raw.githubusercontent.com/sukisu-ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -
+          ./scripts/config --file out/.config \
+            -e CONFIG_KSU \
+            -d CONFIG_KSU_WITH_KPROBES
 
-    - name: Patch KernelSU for Legacy Kernel
-      run: |
-        cd kernel-source
-        sed -i '1s/^/#ifndef MODULE_IMPORT_NS\n#define MODULE_IMPORT_NS(ns)\n#endif\n/' drivers/kernelsu/core/init.c
-        sed -i '1s/^/struct pt_regs;\ntypedef long (*syscall_fn_t)(const struct pt_regs *);\n/' drivers/kernelsu/hook/syscall_hook.h
+          make O=out ARCH=$ARCH olddefconfig
 
-    - name: Compile Kernel
-      run: |
-        cd kernel-source
-        export PATH=$GITHUB_WORKSPACE/clang/bin:$PATH
-        export ARCH=arm64
-        export SUBARCH=arm64
-        
-        make O=out CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- ${{ github.event.inputs.KERNEL_DEFCONFIG }}
-        make O=out CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- -j$(nproc --all) KCFLAGS="-w"
+          echo "[INFO] KSU configs:"
+          grep "CONFIG_KSU" out/.config || echo "[WARN] ไม่พบ CONFIG_KSU — ตรวจ SukiSU-Ultra"
 
-    - name: Package AnyKernel3
-      run: |
-        git clone --depth=1 https://github.com/osm0sis/AnyKernel3.git AnyKernel3
-        rm -rf AnyKernel3/.git AnyKernel3/README.md
-        
-        sed -i 's/do.devicecheck=1/do.devicecheck=0/g' AnyKernel3/anykernel.sh
-        
-        if [ -f kernel-source/out/arch/arm64/boot/Image.gz-dtb ]; then
-          cp kernel-source/out/arch/arm64/boot/Image.gz-dtb AnyKernel3/
-        elif [ -f kernel-source/out/arch/arm64/boot/Image.gz ]; then
-          cp kernel-source/out/arch/arm64/boot/Image.gz AnyKernel3/
-        elif [ -f kernel-source/out/arch/arm64/boot/Image ]; then
-          cp kernel-source/out/arch/arm64/boot/Image AnyKernel3/
-        else
-          echo "Error: Kernel image not found!"
-          exit 1
-        fi
-        
-        cd AnyKernel3
-        zip -r9 ../SukiSU-Ultra-Nokia-SDM660.zip *
+      # ── 5. Build ───────────────────────────────────────────────────────
+      - name: 🏗️ Build kernel
+        run: |
+          make O=out ARCH=$ARCH \
+            CC=clang \
+            CLANG_TRIPLE=aarch64-linux-gnu- \
+            CROSS_COMPILE=aarch64-linux-gnu- \
+            CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
+            -j$(nproc --all)
 
-    - name: Upload Kernel Zip
-      uses: actions/upload-artifact@v4
-      with:
-        name: SukiSU-Ultra-Nokia-SDM660
-        path: SukiSU-Ultra-Nokia-SDM660.zip
+      # ── 6. Verify output ───────────────────────────────────────────────
+      - name: 🔍 Find kernel image
+        run: |
+          echo "[INFO] Boot directory:"
+          ls -lh out/arch/arm64/boot/
+
+          FOUND=""
+          for img in Image.gz-dtb Image.gz Image; do
+            if [ -f "out/arch/arm64/boot/$img" ]; then
+              echo "KERNEL_IMAGE=out/arch/arm64/boot/$img" >> $GITHUB_ENV
+              echo "[INFO] ใช้ kernel image: $img"
+              FOUND="$img"
+              break
+            fi
+          done
+
+          [ -z "$FOUND" ] && { echo "[ERROR] ไม่พบ kernel image!"; exit 1; }
+
+      # ── 7. Package ─────────────────────────────────────────────────────
+      - name: 📦 Package with AnyKernel3
+        run: |
+          git clone --depth=1 \
+            ${{ inputs.ANYKERNEL_REPO }} \
+            -b ${{ inputs.ANYKERNEL_BRANCH }} \
+            AnyKernel3
+
+          cp "${{ env.KERNEL_IMAGE }}" AnyKernel3/
+          [ -f out/arch/arm64/boot/dtb      ] && cp out/arch/arm64/boot/dtb      AnyKernel3/ && echo "[INFO] dtb copied"
+          [ -f out/arch/arm64/boot/dtbo.img  ] && cp out/arch/arm64/boot/dtbo.img AnyKernel3/ && echo "[INFO] dtbo.img copied"
+
+          ZIP="Nokia-SDM660-SukiSU-$(date +%Y%m%d-%H%M).zip"
+          cd AnyKernel3
+          zip -r9 "../$ZIP" . -x ".git*" -x "*.gitignore" -x "README.md"
+          cd ..
+
+          echo "ZIP=$ZIP" >> $GITHUB_ENV
+          echo "[INFO] Package: $ZIP ($(du -sh $ZIP | cut -f1))"
+
+      # ── 8. Upload ──────────────────────────────────────────────────────
+      - name: 🚀 Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Nokia-SDM660-SukiSU-Ultra
+          path: Nokia-SDM660-SukiSU-*.zip
+          retention-days: 7

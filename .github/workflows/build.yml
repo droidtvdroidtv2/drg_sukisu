@@ -1,10 +1,10 @@
-name: Build Kernel SukiSU-Ultra + SUSFS
+name: DRG Kernel SukiSU-Ultra + KPM
 
 on:
   workflow_dispatch:
     inputs:
       KERNEL_DEFCONFIG:
-        description: 'sdm660_defconfig'
+        description: 'Kernel Defconfig'
         required: true
         default: 'sdm660_defconfig'
 
@@ -17,36 +17,23 @@ jobs:
     - name: Checkout Code
       uses: actions/checkout@v4
 
-    - name: Setup Build Environment (เตรียมเครื่องมือ)
+    - name: Setup Build Environment
       run: |
         sudo apt-get update
         sudo apt-get install -y build-essential bc curl git zip unzip libssl-dev libfl-dev gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi
 
-    - name: Clone Compiler 
+    - name: Clone Compiler
       run: |
         git clone --depth=1 https://github.com/kdrag0n/proton-clang.git clang
 
-    - name: Clone Kernel Source 
+    - name: Clone Kernel Source
       run: |
         git clone --depth=1 -b lineage-22.1 https://github.com/LineageOS/android_kernel_nokia_sdm660.git kernel-source
 
-    - name: Setup SukiSU-Ultra 
+    - name: Setup SukiSU-Ultra
       run: |
         cd kernel-source
         curl -LSs "https://raw.githubusercontent.com/sukisu-ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -
-
-    - name: Setup SUSFS
-      run: |
-        git clone --depth=1 https://github.com/simonpunk/susfs4ksu.git -b gki-android14-5.15 susfs-source
-        cd kernel-source
-        
-        cp -r ../susfs-source/kernel_patches/fs/* fs/
-        cp -r ../susfs-source/kernel_patches/include/linux/* include/linux/
-        
-        patch -p1 < ../susfs-source/kernel_patches/50_add_susfs_in_kernel-*.patch || true
-        
-        cd KernelSU
-        patch -p1 < ../../susfs-source/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch || true
 
     - name: Compile Kernel
       run: |
@@ -63,14 +50,20 @@ jobs:
         echo "CONFIG_KPROBE_EVENTS=y" >> arch/arm64/configs/${{ github.event.inputs.KERNEL_DEFCONFIG }}
         echo "CONFIG_OVERLAY_FS=y" >> arch/arm64/configs/${{ github.event.inputs.KERNEL_DEFCONFIG }}
 
+        echo "CONFIG_MODULES=y" >> arch/arm64/configs/${{ github.event.inputs.KERNEL_DEFCONFIG }}
+        echo "CONFIG_MODULE_UNLOAD=y" >> arch/arm64/configs/${{ github.event.inputs.KERNEL_DEFCONFIG }}
+        echo "CONFIG_KALLSYMS=y" >> arch/arm64/configs/${{ github.event.inputs.KERNEL_DEFCONFIG }}
+        echo "CONFIG_KALLSYMS_ALL=y" >> arch/arm64/configs/${{ github.event.inputs.KERNEL_DEFCONFIG }}
+        echo "CONFIG_MODULE_SIG=n" >> arch/arm64/configs/${{ github.event.inputs.KERNEL_DEFCONFIG }}
+
         make O=out ${{ github.event.inputs.KERNEL_DEFCONFIG }}
         make O=out -j$(nproc --all)
 
-    - name: Package AnyKernel3 
+    - name: Package AnyKernel3
       run: |
         git clone --depth=1 https://github.com/osm0sis/AnyKernel3.git AnyKernel3
         rm -rf AnyKernel3/.git AnyKernel3/README.md
-         
+        
         sed -i 's/do.devicecheck=1/do.devicecheck=0/g' AnyKernel3/anykernel.sh
         
         if [ -f kernel-source/out/arch/arm64/boot/Image.gz-dtb ]; then
@@ -80,7 +73,7 @@ jobs:
         elif [ -f kernel-source/out/arch/arm64/boot/Image ]; then
           cp kernel-source/out/arch/arm64/boot/Image AnyKernel3/
         else
-          echo "Error:"
+          echo "Error: Kernel image not found!"
           exit 1
         fi
         

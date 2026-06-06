@@ -11,7 +11,7 @@ on:
 jobs:
   build:
     name: Build Kernel
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
 
     steps:
     - name: Checkout Code
@@ -35,7 +35,7 @@ jobs:
         cd kernel-source
         curl -LSs "https://raw.githubusercontent.com/sukisu-ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -
 
-    - name: Setup SUSFS (ติดตั้ง SUSFS)
+    - name: Setup SUSFS
       run: |
         git clone --depth=1 https://github.com/simonpunk/susfs4ksu.git -b gki-android14-5.15 susfs-source
         cd kernel-source
@@ -58,13 +58,11 @@ jobs:
         export CROSS_COMPILE_ARM32=arm-linux-gnueabi-
         export CC=clang
         
-        # บังคับเปิด Config ที่จำเป็นสำหรับ Root
         echo "CONFIG_KPROBES=y" >> arch/arm64/configs/${{ github.event.inputs.KERNEL_DEFCONFIG }}
         echo "CONFIG_HAVE_KPROBES=y" >> arch/arm64/configs/${{ github.event.inputs.KERNEL_DEFCONFIG }}
         echo "CONFIG_KPROBE_EVENTS=y" >> arch/arm64/configs/${{ github.event.inputs.KERNEL_DEFCONFIG }}
         echo "CONFIG_OVERLAY_FS=y" >> arch/arm64/configs/${{ github.event.inputs.KERNEL_DEFCONFIG }}
 
-        # สั่งคอมไพล์
         make O=out ${{ github.event.inputs.KERNEL_DEFCONFIG }}
         make O=out -j$(nproc --all)
 
@@ -72,11 +70,9 @@ jobs:
       run: |
         git clone --depth=1 https://github.com/osm0sis/AnyKernel3.git AnyKernel3
         rm -rf AnyKernel3/.git AnyKernel3/README.md
-        
-        # ปิดการเช็ครุ่นมือถือใน AnyKernel 
+         
         sed -i 's/do.devicecheck=1/do.devicecheck=0/g' AnyKernel3/anykernel.sh
         
-        # นำไฟล์ Kernel ไปใส่ใน AnyKernel3
         if [ -f kernel-source/out/arch/arm64/boot/Image.gz-dtb ]; then
           cp kernel-source/out/arch/arm64/boot/Image.gz-dtb AnyKernel3/
         elif [ -f kernel-source/out/arch/arm64/boot/Image.gz ]; then

@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       KERNEL_DEFCONFIG:
-        description: 'sdm660_defconfig'
+        description: 'Kernel Defconfig'
         required: true
         default: 'sdm660_defconfig'
 
@@ -30,6 +30,19 @@ jobs:
       run: |
         git clone --depth=1 -b lineage-22.1 https://github.com/LineageOS/android_kernel_nokia_sdm660.git kernel-source
 
+    - name: Inject Kernel Configurations
+      run: |
+        cd kernel-source
+        echo "CONFIG_KPROBES=y" >> arch/arm64/configs/${{ github.event.inputs.KERNEL_DEFCONFIG }}
+        echo "CONFIG_HAVE_KPROBES=y" >> arch/arm64/configs/${{ github.event.inputs.KERNEL_DEFCONFIG }}
+        echo "CONFIG_KPROBE_EVENTS=y" >> arch/arm64/configs/${{ github.event.inputs.KERNEL_DEFCONFIG }}
+        echo "CONFIG_OVERLAY_FS=y" >> arch/arm64/configs/${{ github.event.inputs.KERNEL_DEFCONFIG }}
+        echo "CONFIG_MODULES=y" >> arch/arm64/configs/${{ github.event.inputs.KERNEL_DEFCONFIG }}
+        echo "CONFIG_MODULE_UNLOAD=y" >> arch/arm64/configs/${{ github.event.inputs.KERNEL_DEFCONFIG }}
+        echo "CONFIG_KALLSYMS=y" >> arch/arm64/configs/${{ github.event.inputs.KERNEL_DEFCONFIG }}
+        echo "CONFIG_KALLSYMS_ALL=y" >> arch/arm64/configs/${{ github.event.inputs.KERNEL_DEFCONFIG }}
+        echo "CONFIG_MODULE_SIG=n" >> arch/arm64/configs/${{ github.event.inputs.KERNEL_DEFCONFIG }}
+
     - name: Setup SukiSU-Ultra
       run: |
         cd kernel-source
@@ -41,26 +54,9 @@ jobs:
         export PATH=$GITHUB_WORKSPACE/clang/bin:$PATH
         export ARCH=arm64
         export SUBARCH=arm64
-        export CROSS_COMPILE=aarch64-linux-gnu-
-        export CROSS_COMPILE_ARM32=arm-linux-gnueabi-
-        export CC=clang
         
-        # Remove -Werror to prevent warnings from stopping the build
-        find . -name "Makefile" -o -name "Kbuild" | xargs sed -i 's/-Werror//g' || true
-        
-        echo "CONFIG_KPROBES=y" >> arch/arm64/configs/${{ github.event.inputs.KERNEL_DEFCONFIG }}
-        echo "CONFIG_HAVE_KPROBES=y" >> arch/arm64/configs/${{ github.event.inputs.KERNEL_DEFCONFIG }}
-        echo "CONFIG_KPROBE_EVENTS=y" >> arch/arm64/configs/${{ github.event.inputs.KERNEL_DEFCONFIG }}
-        echo "CONFIG_OVERLAY_FS=y" >> arch/arm64/configs/${{ github.event.inputs.KERNEL_DEFCONFIG }}
-
-        echo "CONFIG_MODULES=y" >> arch/arm64/configs/${{ github.event.inputs.KERNEL_DEFCONFIG }}
-        echo "CONFIG_MODULE_UNLOAD=y" >> arch/arm64/configs/${{ github.event.inputs.KERNEL_DEFCONFIG }}
-        echo "CONFIG_KALLSYMS=y" >> arch/arm64/configs/${{ github.event.inputs.KERNEL_DEFCONFIG }}
-        echo "CONFIG_KALLSYMS_ALL=y" >> arch/arm64/configs/${{ github.event.inputs.KERNEL_DEFCONFIG }}
-        echo "CONFIG_MODULE_SIG=n" >> arch/arm64/configs/${{ github.event.inputs.KERNEL_DEFCONFIG }}
-
-        make O=out ${{ github.event.inputs.KERNEL_DEFCONFIG }}
-        make O=out -j$(nproc --all) KCFLAGS="-w"
+        make O=out CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- ${{ github.event.inputs.KERNEL_DEFCONFIG }}
+        make O=out CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- -j$(nproc --all) KCFLAGS="-w"
 
     - name: Package AnyKernel3
       run: |

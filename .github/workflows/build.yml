@@ -1,146 +1,88 @@
-name: 🔨 Build Kernel — Nokia SDM660 + SukiSU-Ultra
+name: Build SukiSU-Ultra for Nokia DRG (Non-GKI)
 
 on:
   workflow_dispatch:
-    inputs:
-      DEFCONFIG:
-        description: "nokia_defconfig"
-        required: true
-        default: "sdm660-perf_defconfig"
-      ANYKERNEL_REPO:
-        description: "URL ของ AnyKernel3 repo"
-        required: true
-        default: "https://github.com/osm0sis/AnyKernel3"
-      ANYKERNEL_BRANCH:
-        description: "Branch ของ AnyKernel3"
-        required: true
-        default: "master"
-
-env:
-  ARCH: arm64
-  SUBARCH: arm64
 
 jobs:
   build:
-    name: 🔨 Build Kernel
+    name: Build Kernel
     runs-on: ubuntu-22.04
 
+    env:
+      KERNEL_SOURCE: "https://github.com/LineageOS/android_kernel_nokia_sdm660"
+      KERNEL_BRANCH: "lineage-22.1"
+      # หาก DRG ใช้ defconfig ชื่ออื่น (เช่น lineage_drg_defconfig) ให้เปลี่ยนตรงนี้
+      DEFCONFIG: "sdm660_defconfig" 
+      ARCH: "arm64"
+      ANYKERNEL_REPO: "https://github.com/osm0sis/AnyKernel3"
+
     steps:
-
-      # ── 1. Checkout ────────────────────────────────────────────────────
-      - name: 📥 Checkout kernel source
+      - name: Checkout Workspace
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
 
-      # ── 2. Install tools ───────────────────────────────────────────────
-      - name: 🔧 Install dependencies
+      - name: Setup Build Environment
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y \
-            git curl wget python3 make \
-            flex bison libssl-dev libelf-dev \
-            bc zip unzip lz4 \
-            gcc-aarch64-linux-gnu \
-            gcc-arm-linux-gnueabi \
-            clang lld llvm \
-            binutils-aarch64-linux-gnu
+          sudo apt-get update
+          sudo apt-get install -y git ccache automake flex lzop bison gperf build-essential zip curl zlib1g-dev g++-multilib libxml2-utils bzip2 libbz2-dev libbz2-1.0 libghc-bzlib-dev squashfs-tools pngcrush schedtool dpkg-dev liblz4-tool make optipng maven libssl-dev pwgen libswitch-perl policycoreutils minicom libxml-sax-base-perl libxml-simple-perl bc libc6-dev-i386 lib32ncurses5-dev x11proto-core-dev libx11-dev lib32z-dev libgl1-mesa-dev xsltproc unzip device-tree-compiler python3
 
-      # ── 3. SukiSU-Ultra ────────────────────────────────────────────────
-      # clone โดยตรงแทน setup.sh เพื่อหลีกเลี่ยงปัญหา non-GKI path detection
-      - name: ⚡ Apply SukiSU-Ultra (Non-GKI)
+      - name: Download Proton-Clang Toolchain
         run: |
-          echo "==> Cloning SukiSU-Ultra..."
-          git clone --depth=1 \
-            https://github.com/ShirkNeko/SukiSU-Ultra \
-            KernelSU
-          echo "[INFO] KernelSU version: $(cat KernelSU/VERSION 2>/dev/null || echo 'N/A')"
-          ls KernelSU/kernel/ || { echo "[ERROR] KernelSU/kernel/ missing"; exit 1; }
+          git clone https://github.com/kdrag0n/proton-clang --depth=1 ~/proton-clang
 
-          echo "==> Integrating into kernel build..."
-          if [ -d "drivers" ]; then
-            echo "  [+] Method: drivers/ symlink"
-            ln -sf ../../KernelSU/kernel drivers/kernelsu
-            echo ""                                     >> drivers/Makefile
-            echo "obj-\$(CONFIG_KSU) += kernelsu/"     >> drivers/Makefile
-            echo ""                                     >> drivers/Kconfig
-            echo "source \"drivers/kernelsu/Kconfig\"" >> drivers/Kconfig
-          else
-            echo "  [+] Method: root Makefile"
-            echo ""                                          >> Makefile
-            echo "obj-\$(CONFIG_KSU) += KernelSU/kernel/"  >> Makefile
-          fi
-          echo "[OK] SukiSU-Ultra integration complete"
-
-      # ── 4. Configure kernel ────────────────────────────────────────────
-      # - เปิด CONFIG_KSU
-      # - ปิด CONFIG_KSU_WITH_KPROBES เพราะเป็น non-GKI (4.14)
-      #   ใช้ manual hook แทน ซึ่ง setup.sh จัดการให้แล้ว
-      - name: ⚙️ Configure kernel
+      - name: Clone Kernel Source
         run: |
-          make O=out ARCH=$ARCH ${{ inputs.DEFCONFIG }}
+          git clone --depth=1 -b ${{ env.KERNEL_BRANCH }} ${{ env.KERNEL_SOURCE }} kernel-source
 
-          ./scripts/config --file out/.config \
-            -e CONFIG_KSU \
-            -d CONFIG_KSU_WITH_KPROBES
-
-          make O=out ARCH=$ARCH olddefconfig
-
-          echo "[INFO] KSU configs:"
-          grep "CONFIG_KSU" out/.config || echo "[WARN] ไม่พบ CONFIG_KSU — ตรวจ SukiSU-Ultra"
-
-      # ── 5. Build ───────────────────────────────────────────────────────
-      - name: 🏗️ Build kernel
+      - name: Setup SukiSU-Ultra
         run: |
-          make O=out ARCH=$ARCH \
+          cd kernel-source
+          # ดึงสคริปต์ของ SukiSU-Ultra มาติดตั้งลงใน Kernel Source
+          curl -LSs "https://raw.githubusercontent.com/sukisu-ultra/sukisu-ultra/main/kernel/setup.sh" | bash -
+          
+          # แทรก Config ที่บังคับใช้สำหรับ SukiSU Non-GKI
+          echo "CONFIG_KPROBES=y" >> arch/arm64/configs/${{ env.DEFCONFIG }}
+          echo "CONFIG_HAVE_KPROBES=y" >> arch/arm64/configs/${{ env.DEFCONFIG }}
+          echo "CONFIG_KPROBE_EVENTS=y" >> arch/arm64/configs/${{ env.DEFCONFIG }}
+          echo "CONFIG_KALLSYMS=y" >> arch/arm64/configs/${{ env.DEFCONFIG }}
+          echo "CONFIG_KALLSYMS_ALL=y" >> arch/arm64/configs/${{ env.DEFCONFIG }}
+
+      - name: Build Kernel
+        run: |
+          cd kernel-source
+          export PATH="$HOME/proton-clang/bin:$PATH"
+          export STRIP="$HOME/proton-clang/aarch64-linux-gnu/bin/strip"
+          
+          make O=out ARCH=${{ env.ARCH }} ${{ env.DEFCONFIG }}
+          
+          # ใช้ Clang 컴ไพล์ เนื่องจาก Kernel เก่าอาจมีปัญหากับ LLVM_IAS
+          make -j$(nproc --all) \
+            O=out \
+            ARCH=${{ env.ARCH }} \
             CC=clang \
-            CLANG_TRIPLE=aarch64-linux-gnu- \
             CROSS_COMPILE=aarch64-linux-gnu- \
             CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
-            -j$(nproc --all)
+            AR=llvm-ar \
+            NM=llvm-nm \
+            OBJCOPY=llvm-objcopy \
+            OBJDUMP=llvm-objdump \
+            STRIP=llvm-strip
 
-      # ── 6. Verify output ───────────────────────────────────────────────
-      - name: 🔍 Find kernel image
+      - name: Package with AnyKernel3
         run: |
-          echo "[INFO] Boot directory:"
-          ls -lh out/arch/arm64/boot/
-
-          FOUND=""
-          for img in Image.gz-dtb Image.gz Image; do
-            if [ -f "out/arch/arm64/boot/$img" ]; then
-              echo "KERNEL_IMAGE=out/arch/arm64/boot/$img" >> $GITHUB_ENV
-              echo "[INFO] ใช้ kernel image: $img"
-              FOUND="$img"
-              break
-            fi
-          done
-
-          [ -z "$FOUND" ] && { echo "[ERROR] ไม่พบ kernel image!"; exit 1; }
-
-      # ── 7. Package ─────────────────────────────────────────────────────
-      - name: 📦 Package with AnyKernel3
-        run: |
-          git clone --depth=1 \
-            ${{ inputs.ANYKERNEL_REPO }} \
-            -b ${{ inputs.ANYKERNEL_BRANCH }} \
-            AnyKernel3
-
-          cp "${{ env.KERNEL_IMAGE }}" AnyKernel3/
-          [ -f out/arch/arm64/boot/dtb      ] && cp out/arch/arm64/boot/dtb      AnyKernel3/ && echo "[INFO] dtb copied"
-          [ -f out/arch/arm64/boot/dtbo.img  ] && cp out/arch/arm64/boot/dtbo.img AnyKernel3/ && echo "[INFO] dtbo.img copied"
-
-          ZIP="Nokia-SDM660-SukiSU-$(date +%Y%m%d-%H%M).zip"
+          git clone --depth=1 ${{ env.ANYKERNEL_REPO }} AnyKernel3
+          
+          # ปรับแก้ AnyKernel ให้รองรับชื่อโค้ดเนม drg
+          sed -i 's/device.name1=maguro/device.name1=drg/g' AnyKernel3/anykernel.sh
+          sed -i 's/device.name2=toro/device.name2=Nokia 6.1 Plus/g' AnyKernel3/anykernel.sh
+          
+          # ค้นหาและก๊อปปี้ไฟล์ Image มาแพ็กเข้า ZIP
+          find kernel-source/out/arch/arm64/boot -name "Image*" -exec cp {} AnyKernel3/ \;
+          
           cd AnyKernel3
-          zip -r9 "../$ZIP" . -x ".git*" -x "*.gitignore" -x "README.md"
-          cd ..
+          zip -r9 ../SukiSU-Ultra-drg-kernel.zip * -x .git README.md *placeholder
 
-          echo "ZIP=$ZIP" >> $GITHUB_ENV
-          echo "[INFO] Package: $ZIP ($(du -sh $ZIP | cut -f1))"
-
-      # ── 8. Upload ──────────────────────────────────────────────────────
-      - name: 🚀 Upload artifact
+      - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Nokia-SDM660-SukiSU-Ultra
-          path: Nokia-SDM660-SukiSU-*.zip
-          retention-days: 7
+          name: SukiSU-Ultra-Nokia-DRG-Kernel
+          path: SukiSU-Ultra-drg-kernel.zip

@@ -1,0 +1,98 @@
+name: Build Kernel SukiSU-Ultra + SUSFS
+
+on:
+  workflow_dispatch:
+    inputs:
+      KERNEL_DEFCONFIG:
+        description: 'sdm660_defconfig'
+        required: true
+        default: 'sdm660_defconfig'
+
+jobs:
+  build:
+    name: Build Kernel
+    runs-on: ubuntu-20.04
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    - name: Setup Build Environment (เตรียมเครื่องมือ)
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential bc curl git zip unzip libssl-dev libfl-dev gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi
+
+    - name: Clone Compiler 
+      run: |
+        git clone --depth=1 https://github.com/kdrag0n/proton-clang.git clang
+
+    - name: Clone Kernel Source 
+      run: |
+        git clone --depth=1 -b lineage-22.1 https://github.com/LineageOS/android_kernel_nokia_sdm660.git kernel-source
+
+    - name: Setup SukiSU-Ultra 
+      run: |
+        cd kernel-source
+        curl -LSs "https://raw.githubusercontent.com/sukisu-ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -
+
+    - name: Setup SUSFS (ติดตั้ง SUSFS)
+      run: |
+        git clone --depth=1 https://github.com/simonpunk/susfs4ksu.git -b gki-android14-5.15 susfs-source
+        cd kernel-source
+        
+        cp -r ../susfs-source/kernel_patches/fs/* fs/
+        cp -r ../susfs-source/kernel_patches/include/linux/* include/linux/
+        
+        patch -p1 < ../susfs-source/kernel_patches/50_add_susfs_in_kernel-*.patch || true
+        
+        cd KernelSU
+        patch -p1 < ../../susfs-source/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch || true
+
+    - name: Compile Kernel
+      run: |
+        cd kernel-source
+        export PATH=$GITHUB_WORKSPACE/clang/bin:$PATH
+        export ARCH=arm64
+        export SUBARCH=arm64
+        export CROSS_COMPILE=aarch64-linux-gnu-
+        export CROSS_COMPILE_ARM32=arm-linux-gnueabi-
+        export CC=clang
+        
+        # บังคับเปิด Config ที่จำเป็นสำหรับ Root
+        echo "CONFIG_KPROBES=y" >> arch/arm64/configs/${{ github.event.inputs.KERNEL_DEFCONFIG }}
+        echo "CONFIG_HAVE_KPROBES=y" >> arch/arm64/configs/${{ github.event.inputs.KERNEL_DEFCONFIG }}
+        echo "CONFIG_KPROBE_EVENTS=y" >> arch/arm64/configs/${{ github.event.inputs.KERNEL_DEFCONFIG }}
+        echo "CONFIG_OVERLAY_FS=y" >> arch/arm64/configs/${{ github.event.inputs.KERNEL_DEFCONFIG }}
+
+        # สั่งคอมไพล์
+        make O=out ${{ github.event.inputs.KERNEL_DEFCONFIG }}
+        make O=out -j$(nproc --all)
+
+    - name: Package AnyKernel3 
+      run: |
+        git clone --depth=1 https://github.com/osm0sis/AnyKernel3.git AnyKernel3
+        rm -rf AnyKernel3/.git AnyKernel3/README.md
+        
+        # ปิดการเช็ครุ่นมือถือใน AnyKernel 
+        sed -i 's/do.devicecheck=1/do.devicecheck=0/g' AnyKernel3/anykernel.sh
+        
+        # นำไฟล์ Kernel ไปใส่ใน AnyKernel3
+        if [ -f kernel-source/out/arch/arm64/boot/Image.gz-dtb ]; then
+          cp kernel-source/out/arch/arm64/boot/Image.gz-dtb AnyKernel3/
+        elif [ -f kernel-source/out/arch/arm64/boot/Image.gz ]; then
+          cp kernel-source/out/arch/arm64/boot/Image.gz AnyKernel3/
+        elif [ -f kernel-source/out/arch/arm64/boot/Image ]; then
+          cp kernel-source/out/arch/arm64/boot/Image AnyKernel3/
+        else
+          echo "Error:"
+          exit 1
+        fi
+        
+        cd AnyKernel3
+        zip -r9 ../SukiSU-Ultra-Nokia-SDM660.zip *
+
+    - name: Upload Kernel Zip
+      uses: actions/upload-artifact@v4
+      with:
+        name: SukiSU-Ultra-Nokia-SDM660
+        path: SukiSU-Ultra-Nokia-SDM660.zip

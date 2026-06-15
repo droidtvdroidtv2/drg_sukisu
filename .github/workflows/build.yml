@@ -5,8 +5,8 @@ on:
 
 env:
   # ใช้ Kernel Source จากคลังที่คุณ Fork มา
-  KERNEL_SOURCE: "https://github.com/droidtvdroidtv2/kernel_nokia_sdm660-KernelSU"
-  KERNEL_BRANCH: "Android_14-KernelSU"
+  KERNEL_SOURCE: "https://github.com/droidtvdroidtv2/android_kernel_nokia_sdm660"
+  KERNEL_BRANCH: "lineage-18.1"
   DEFCONFIG: "nokia_defconfig"
   ARCH: "arm64"
   CLANG_URL: "https://github.com/kdrag0n/proton-clang"

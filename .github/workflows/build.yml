@@ -37,7 +37,7 @@ jobs:
         run: |
           cd kernel-source
           # ดึงสคริปต์ติดตั้ง ReSukiSU มาฝังในโครงสร้าง Kernel
-          curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s susfs-{{branch}}
+          curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash
           
           # บังคับเพิ่ม Config ของระบบควบคุมสิทธิ์และตรวจสอบความถูกต้องสำหรับ Non-GKI
           echo "CONFIG_KPROBES=y" >> arch/arm64/configs/${{ env.DEFCONFIG }}

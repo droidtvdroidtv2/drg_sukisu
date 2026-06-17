@@ -1,4 +1,4 @@
-name: Build ReSukiSU Kernel (Nokia DRG - Fork Source)
+name: Build ksun Kernel (Nokia DRG - Fork Source)
 
 on:
   workflow_dispatch:
@@ -33,11 +33,11 @@ jobs:
         run: |
           git clone --depth=1 -b ${{ env.KERNEL_BRANCH }} ${{ env.KERNEL_SOURCE }} kernel-source
 
-      - name: Inject ReSukiSU Source
+      - name: Inject ksun Source
         run: |
           cd kernel-source
-          # ดึงสคริปต์ติดตั้ง ReSukiSU มาฝังในโครงสร้าง Kernel
-          curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s builtin
+          # ดึงสคริปต์ติดตั้ง ksun มาฝังในโครงสร้าง Kernel
+          curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s legacy
           
           # บังคับเพิ่ม Config ของระบบควบคุมสิทธิ์และตรวจสอบความถูกต้องสำหรับ Non-GKI
           echo "CONFIG_KALLSYMS=y" >> arch/arm64/configs/${{ env.DEFCONFIG }}
@@ -69,10 +69,10 @@ jobs:
           find kernel-source/out/arch/arm64/boot -name "Image.gz-dtb" -exec cp {} AnyKernel3/ \; || find kernel-source/out/arch/arm64/boot -name "Image*" -exec cp {} AnyKernel3/ \;
           
           cd AnyKernel3
-          zip -r9 ../ReSukiSU-Nokia-DRG-Kernel.zip * -x .git README.md *placeholder
+          zip -r9 ../ksun-Nokia-DRG-Kernel.zip * -x .git README.md *placeholder
 
       - name: Upload Finished Zip
         uses: actions/upload-artifact@v4
         with:
-          name: ReSukiSU-Nokia-DRG-Kernel
-          path: ReSukiSU-Nokia-DRG-Kernel.zip
+          name: ksun-Nokia-DRG-Kernel
+          path: ksun-Nokia-DRG-Kernel.zip

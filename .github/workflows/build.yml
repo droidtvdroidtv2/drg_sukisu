@@ -1,4 +1,4 @@
-name: Build ksun Kernel (Nokia DRG - Fork Source)
+name: Build rksu Kernel (Nokia DRG - Fork Source)
 
 on:
   workflow_dispatch:
@@ -33,15 +33,11 @@ jobs:
         run: |
           git clone --depth=1 -b ${{ env.KERNEL_BRANCH }} ${{ env.KERNEL_SOURCE }} kernel-source
 
-      - name: Inject ksun Source
+      - name: Inject rksu Source
         run: |
           cd kernel-source
-          # ดึงสคริปต์ติดตั้ง ksun มาฝังในโครงสร้าง Kernel
-          curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s legacy
-          
-          # บังคับเพิ่ม Config ของระบบควบคุมสิทธิ์และตรวจสอบความถูกต้องสำหรับ Non-GKI
-          echo "CONFIG_KALLSYMS=y" >> arch/arm64/configs/${{ env.DEFCONFIG }}
-          echo "CONFIG_KALLSYMS_ALL=y" >> arch/arm64/configs/${{ env.DEFCONFIG }}
+          # ดึงสคริปต์ติดตั้ง rksu มาฝังในโครงสร้าง Kernel
+          curl -LSs "https://raw.githubusercontent.com/rsuntk/KernelSU/main/kernel/setup.sh" | bash -s main
 
       - name: Compile Kernel
         run: |
@@ -62,17 +58,17 @@ jobs:
           git clone --depth=1 https://github.com/osm0sis/AnyKernel3 AnyKernel3
           
           # ระบุข้อมูลอุปกรณ์เป็นของ Nokia DRG
-          sed -i 's/device.name1=maguro/device.name1=drg/' AnyKernel3/anykernel.sh
-          sed -i 's/device.name2=toro/device.name2=Nokia 6.1 Plus/' AnyKernel3/anykernel.sh
+          sed -i 's/device.name1=maguro/device.name1=DRG/' AnyKernel3/anykernel.sh
+          sed -i 's/device.name2=toro/device.name2=DRG_sprout/' AnyKernel3/anykernel.sh
           
           # ค้นหาไฟล์ตระกูล Image เพื่อนำไปจัดชุดแฟลช
           find kernel-source/out/arch/arm64/boot -name "Image.gz-dtb" -exec cp {} AnyKernel3/ \; || find kernel-source/out/arch/arm64/boot -name "Image*" -exec cp {} AnyKernel3/ \;
           
           cd AnyKernel3
-          zip -r9 ../ksun-Nokia-DRG-Kernel.zip * -x .git README.md *placeholder
+          zip -r9 ../rksu-Nokia-DRG-Kernel.zip * -x .git README.md *placeholder
 
       - name: Upload Finished Zip
         uses: actions/upload-artifact@v4
         with:
-          name: ksun-Nokia-DRG-Kernel
-          path: ksun-Nokia-DRG-Kernel.zip
+          name: rksu-Nokia-DRG-Kernel
+          path: rksu-Nokia-DRG-Kernel.zip

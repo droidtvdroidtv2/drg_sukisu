@@ -1,4 +1,4 @@
-name: Build rksu Kernel (Nokia DRG - Fork Source)
+name: Build ksun Kernel (Nokia DRG - Fork Source)
 
 on:
   workflow_dispatch:
@@ -6,7 +6,7 @@ on:
 env:
   # ใช้ Kernel Source จากคลังที่คุณ Fork มา
   KERNEL_SOURCE: "https://github.com/droidtvdroidtv2/android_kernel_nokia_sdm660"
-  KERNEL_BRANCH: "spaghetti_rksu"
+  KERNEL_BRANCH: "lineage-22.1"
   DEFCONFIG: "nokia_defconfig"
   ARCH: "arm64"
   CLANG_URL: "https://github.com/kdrag0n/proton-clang"
@@ -33,11 +33,11 @@ jobs:
         run: |
           git clone --depth=1 -b ${{ env.KERNEL_BRANCH }} ${{ env.KERNEL_SOURCE }} kernel-source
 
-      - name: Inject rksu Source
+      - name: Inject ksun Source
         run: |
           cd kernel-source
-          # ดึงสคริปต์ติดตั้ง rksu มาฝังในโครงสร้าง Kernel
-          curl -LSs "https://raw.githubusercontent.com/rsuntk/KernelSU/main/kernel/setup.sh" | bash -s main
+          # ดึงสคริปต์ติดตั้ง ksun มาฝังในโครงสร้าง Kernel
+          curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s legacy
 
       - name: Compile Kernel
         run: |
@@ -65,10 +65,10 @@ jobs:
           find kernel-source/out/arch/arm64/boot -name "Image.gz-dtb" -exec cp {} AnyKernel3/ \; || find kernel-source/out/arch/arm64/boot -name "Image*" -exec cp {} AnyKernel3/ \;
           
           cd AnyKernel3
-          zip -r9 ../rksu-Nokia-DRG-Kernel.zip * -x .git README.md *placeholder
+          zip -r9 ../ksun-Nokia-DRG-Kernel.zip * -x .git README.md *placeholder
 
       - name: Upload Finished Zip
         uses: actions/upload-artifact@v4
         with:
-          name: rksu-Nokia-DRG-Kernel
-          path: rksu-Nokia-DRG-Kernel.zip
+          name: ksun-Nokia-DRG-Kernel
+          path: ksun-Nokia-DRG-Kernel.zip

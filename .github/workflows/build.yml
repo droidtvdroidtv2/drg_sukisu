@@ -37,7 +37,7 @@ jobs:
         run: |
           cd kernel-source
           # ดึงสคริปต์ติดตั้ง rksu มาฝังในโครงสร้าง Kernel
-          curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s legacy
+          curl -LSs "https://raw.githubusercontent.com/rsuntk/KernelSU/main/kernel/setup.sh" | bash -s susfs-rksu-master
 
       - name: Compile Kernel
         run: |
